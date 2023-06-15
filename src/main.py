@@ -3,6 +3,7 @@ import subprocess
 import json
 import sys
 import pandas as pd
+import time
 import os
 import yaml
 
@@ -43,17 +44,11 @@ class DataPreparation:
 class ModelUtils:
 
     @staticmethod
-    def create_fine_tuned_model(train_file_path, base_model):
-        print(f"Base model: {base_model}")
-        process = subprocess.run(["openai", "api", "fine_tunes.create", "-t", train_file_path, "-m", base_model],
-                                 capture_output=True, text=True)
-        print(f"Process stdout: {process.stdout}")
-        print(f"Process stderr: {process.stderr}")
-        if process.returncode != 0:
-            print("Failed to create a fine-tuned model.")
-            sys.exit(1)
-        fine_tuned_model_id = json.loads(process.stdout)["id"]
-        return fine_tuned_model_id
+    def create_fine_tuned_model(current_model):
+        # Call the fine-tuning bash script and get the output
+        bash_output = subprocess.check_output(["bash", "fine_tune.sh", current_model])
+        # Parse the output as JSON and return the model name
+        return bash_output.decode("utf-8").strip()
 
 class AdversarialTraining:
     def __init__(self, data_prep, initial_judge_data, initial_adversarial_data):
@@ -82,7 +77,6 @@ class AdversarialTraining:
             return response.choices[0].message['content'].strip()
 
 
-
     def generate_problematic_prompt(self, adversarial_model, messages):
         problematic_prompt = self.generate_text(adversarial_model, messages)
         return problematic_prompt
@@ -95,7 +89,7 @@ class AdversarialTraining:
 
     def train(self, iterations, fine_tuning_iterations, fine_tune_both_models=False):
         adversarial_model = "gpt-3.5-turbo"
-        judge_model = "text-davinci-003"
+        judge_model = "curie"
         judge_dataset_file = "judge_dataset"
         adversarial_dataset_file = "adversarial_dataset"
 
@@ -143,9 +137,11 @@ class AdversarialTraining:
                 data_prep.save_to_dataset(non_problematic_prompt, "0", self.judge_dataset_file)
 
             # Fine-tune the models using the new datasets
+            print("\nFine-tuning models")
+            print("-"*50)
             if fine_tune_both_models:
-                adversarial_model = ModelUtils.create_fine_tuned_model(adversarial_dataset_file, adversarial_model)
-            judge_model = ModelUtils.create_fine_tuned_model(judge_dataset_file, judge_model)
+                adversarial_model = ModelUtils.create_fine_tuned_model(adversarial_model)
+            judge_model = ModelUtils.create_fine_tuned_model(judge_model)
 
         print("\nTraining complete")
 
